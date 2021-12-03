@@ -3,17 +3,17 @@ import sys
 from tensorboardX import SummaryWriter
 import torch
 sys.path.append('../')
-from models.model import MNISTmodel
+from models.model import DenseNetDann
 from core.train import train_dann
 from utils.utils import get_data_loader, init_model, init_random_seed
 
-model_kernel_sizes=[3,1 ]
+from wilds import get_dataset
+from wilds.common.data_loaders import get_train_loader, get_test_loader
 
 class Config(object):
     # params for path
     dataset_root = os.path.expanduser(os.path.join('../raw_datasets'))
-    temp = "_".join(map(str, model_kernel_sizes)) 
-    model_root = os.path.expanduser(os.path.join('../results/saved_models_'+temp, 'pytorch-DANN'))
+    model_root = os.path.expanduser(os.path.join('../results/saved_models_camelyon', 'pytorch-DANN'))
 
     # params for datasets and data loader
     batch_size = 64
@@ -43,10 +43,10 @@ class Config(object):
     gpu_id = '0'
 
     ## for digit
-    num_epochs = 100
-    log_step = 20
-    save_step = 50
-    eval_step = 5
+    num_epochs = 5
+    log_step = 1
+    save_step = 1
+    eval_step = 1
 
     ## for office
     # num_epochs = 1000
@@ -58,9 +58,9 @@ class Config(object):
     alpha = 0
 
     # params for optimizing models
-    lr = 2e-4
+    lr = 1e-3
     momentum = 0.9
-    weight_decay = 1e-6
+    weight_decay = 1e-2
 
 params = Config()
 
@@ -73,10 +73,18 @@ init_random_seed(params.manual_seed)
 device = torch.device("cuda:" + params.gpu_id if torch.cuda.is_available() else "cpu")
 
 # load dataset
-src_data_loader = get_data_loader(params.src_dataset, params.dataset_root, params.batch_size, train=True)
-src_data_loader_eval = get_data_loader(params.src_dataset, params.dataset_root, params.batch_size, train=False)
-tgt_data_loader = get_data_loader(params.tgt_dataset, params.dataset_root, params.batch_size, train=True)
-tgt_data_loader_eval = get_data_loader(params.tgt_dataset, params.dataset_root, params.batch_size, train=False)
+dataset = get_dataset(dataset='camelyon17', download=True)
+train_data = dataset.get_subset('train', transform=transforms.Compose([transforms.Resize((448,448)), transforms.ToTensor()]))
+
+src_data_loader = get_train_loader('standard', train_data, batch_size=32)
+
+test_data =  dataset.get_subset('test', transform=transforms.Compose([transforms.Resize((448,448)), transforms.ToTensor()]))
+
+t1, t2 = torch.utils.data.random_split(dataset, [42527, 42527], generator=torch.Generator().manual_seed(132))
+
+tgt_data_loader = get_train_loader('standard', t1, batch_size=32)
+tgt_data_loader_eval = get_eval_loader('standard', t2, batch_size=32)
+
 
 # load dann model
 dann = init_model(net=MNISTmodel(model_kernel_sizes), restore=None)

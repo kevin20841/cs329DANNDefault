@@ -48,6 +48,7 @@ def get_data_loader(name, dataset_root, batch_size, train=True):
     """Get data loader by name."""
     if name == "mnist":
         return get_mnist(dataset_root, batch_size, train)
+
     elif name == "mnistm":
         return get_mnistm(dataset_root, batch_size, train)
 

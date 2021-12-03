@@ -1,6 +1,11 @@
-
+import sys
 import torch.utils.data
 import torch.nn as nn
+from tqdm import tqdm
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
+
 
 def test(model, data_loader, device, flag):
     """Evaluate model for dataset."""
@@ -17,7 +22,7 @@ def test(model, data_loader, device, flag):
     criterion = nn.CrossEntropyLoss()
 
     # evaluate network
-    for (images, labels) in data_loader:
+    for (images, labels, _) in data_loader:
         images = images.to(device)
         labels = labels.to(device)  #labels = labels.squeeze(1)
         size = len(labels)
@@ -41,5 +46,7 @@ def test(model, data_loader, device, flag):
     acc_domain = acc_domain_ / n_total
 
     print("Avg Loss = {:.6f}, Avg Accuracy = {:.2%}, {}/{}, Avg Domain Accuracy = {:2%}".format(loss, acc, acc_, n_total, acc_domain))
+
+    eprint("Avg Loss = {:.6f}, Avg Accuracy = {:.2%}, {}/{}, Avg Domain Accuracy = {:2%}".format(loss, acc, acc_, n_total, acc_domain))
 
     return loss, acc, acc_domain

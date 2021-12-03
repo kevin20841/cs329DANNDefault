@@ -1,7 +1,7 @@
 """Train dann."""
 
 import numpy as np
-
+import sys
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -9,6 +9,9 @@ from core.test import test
 from utils.utils import save_model
 import torch.backends.cudnn as cudnn
 cudnn.benchmark = True
+
+def eprint(*args, **kwargs):
+    print(*args, file=sys.stderr, **kwargs)
 
 def train_src(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_eval, device, logger):
     """Train dann."""
@@ -110,7 +113,7 @@ def train_src(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_e
 
     return model
 
-def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_eval, device, logger):
+def train_dann(model, params, src_data_loader, src_eval_data_loader, tgt_data_loader, tgt_data_loader_eval, device, logger):
     """Train dann."""
     ####################
     # 1. setup network #
@@ -136,7 +139,7 @@ def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_
         }, {
             "params": model.discriminator.parameters()
         }]
-        optimizer = optim.SGD(parameter_list, lr=0.01, momentum=0.9)
+        optimizer = optim.SGD(parameter_list, lr=0.001, momentum=0.9)
 
     criterion = nn.CrossEntropyLoss()
 
@@ -150,16 +153,22 @@ def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_
         # zip source and target data pair
         len_dataloader = min(len(src_data_loader), len(tgt_data_loader))
         data_zip = enumerate(zip(src_data_loader, tgt_data_loader))
-        for step, ((images_src, class_src), (images_tgt, _)) in data_zip:
-
+        
+        for step, ((images_src, class_src, _), (images_tgt, _, _)) in data_zip:
+            
+            
             p = float(step + epoch * len_dataloader) / \
                 params.num_epochs / len_dataloader
             alpha = 2. / (1. + np.exp(-10 * p)) - 1
 
-            if params.lr_adjust_flag == 'simple':
-                lr = adjust_learning_rate(optimizer, p)
-            else:
-                lr = adjust_learning_rate_office(optimizer, p)
+            # if params.lr_adjust_flag == 'simple':
+                # lr = adjust_learning_rate(optimizer, p)
+            # else:
+            #    lr = adjust_learning_rate_office(optimizer, p)
+            lr = params.lr
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = lr
+
             logger.add_scalar('lr', lr, global_step)
 
             # prepare domain label
@@ -207,10 +216,15 @@ def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_
                     .format(epoch + 1, params.num_epochs, step + 1, len_dataloader, src_loss_class.data.item(),
                             src_loss_domain.data.item(), tgt_loss_domain.data.item(), loss.data.item()))
 
+                eprint(
+                    "Epoch [{:4d}/{}] Step [{:2d}/{}]: src_loss_class={:.6f}, src_loss_domain={:.6f}, tgt_loss_domain={:.6f}, loss={:.6f}"
+                    .format(epoch + 1, params.num_epochs, step + 1, len_dataloader, src_loss_class.data.item(),
+                            src_loss_domain.data.item(), tgt_loss_domain.data.item(), loss.data.item()))
+
         # eval model
         if ((epoch + 1) % params.eval_step == 0):
             tgt_test_loss, tgt_acc, tgt_acc_domain = test(model, tgt_data_loader_eval, device, flag='target')
-            src_test_loss, src_acc, src_acc_domain = test(model, src_data_loader, device, flag='source')
+            src_test_loss, src_acc, src_acc_domain = test(model, src_eval_data_loader, device, flag='source')
             logger.add_scalar('src_test_loss', src_test_loss, global_step)
             logger.add_scalar('src_acc', src_acc, global_step)
             logger.add_scalar('src_acc_domain', src_acc_domain, global_step)
@@ -218,7 +232,7 @@ def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_
             logger.add_scalar('tgt_acc', tgt_acc, global_step)
             logger.add_scalar('tgt_acc_domain', tgt_acc_domain, global_step)
 
-
+        sys.stdout.flush()
         # save model parameters
         if ((epoch + 1) % params.save_step == 0):
             save_model(model, params.model_root,
@@ -230,7 +244,7 @@ def train_dann(model, params, src_data_loader, tgt_data_loader, tgt_data_loader_
     return model
 
 def adjust_learning_rate(optimizer, p):
-    lr_0 = 0.01
+    lr_0 = 0.001
     alpha = 10
     beta = 0.75
     lr = lr_0 / (1 + alpha * p)**beta
